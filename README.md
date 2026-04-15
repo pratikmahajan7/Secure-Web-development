@@ -1,12 +1,453 @@
-# Secure-Web-Development
-# Secure Web Application - CA2
 <div align="center">
-  <h1>🛡️ Secure Web Development - CA2</h1>
-  <p>A secure Python-based web application demonstrating core security principles and vulnerability mitigation.</p>
-  
-  <img src="https://img.shields.io/badge/Python-3776AB?style=for-the-badge&logo=python&logoColor=white" alt="Python" />
-  <img src="https://img.shields.io/badge/HTML5-E34F26?style=for-the-badge&logo=html5&logoColor=white" alt="HTML5" />
-  <img src="https://img.shields.io/badge/Security-Focused-red?style=for-the-badge" alt="Security" />
+
+# SecureTask — Secure Web Development CA2
+
+### National College of Ireland
+
+A Python/Flask task management application built in two versions —  
+a **secure** production-ready app and an **intentionally vulnerable** counterpart —  
+to demonstrate real-world web security principles and common vulnerability classes.
+
+![Python](https://img.shields.io/badge/Python-3776AB?style=for-the-badge&logo=python&logoColor=white)
+![Flask](https://img.shields.io/badge/Flask-000000?style=for-the-badge&logo=flask&logoColor=white)
+![SQLite](https://img.shields.io/badge/SQLite-003B57?style=for-the-badge&logo=sqlite&logoColor=white)
+![Security](https://img.shields.io/badge/Security-Focused-red?style=for-the-badge)
+
 </div>
 
-<br />
+---
+
+## Table of Contents
+
+1. [Project Overview](#1-project-overview)
+2. [Project Structure](#2-project-structure)
+3. [Installation & Setup](#3-installation--setup)
+4. [Running the Apps](#4-running-the-apps)
+5. [Default Credentials](#5-default-credentials)
+6. [Secure App — Features & How They Work](#6-secure-app--features--how-they-work)
+7. [Vulnerable App — Intentional Flaws](#7-vulnerable-app--intentional-flaws)
+8. [Security Comparison Table](#8-security-comparison-table)
+9. [Pages & Routes](#9-pages--routes)
+10. [Technologies Used](#10-technologies-used)
+
+---
+
+## 1. Project Overview
+
+This project was created for **CA2 of Secure Web Development** at NCI. It consists of two Flask applications that share the same core functionality — user registration, login, a personal task manager, and an admin panel — but differ entirely in their security posture.
+
+| App | File | Port | Purpose |
+|---|---|---|---|
+| Secure | `securetask.py` | 5000 | Production-ready, all vulnerabilities mitigated |
+| Vulnerable | `vulnerableapp.py` | 5001 | Intentionally broken, for educational demonstration |
+
+Running both simultaneously allows a direct, side-by-side demonstration of each attack and its fix.
+
+> **Warning:** `vulnerableapp.py` is intentionally insecure. Never deploy it on a public server or network.
+
+---
+
+## 2. Project Structure
+
+```
+Secure-Web-Development/
+│
+├── securetask.py          # Secure Flask application (main deliverable)
+├── vulnerableapp.py       # Intentionally vulnerable version (for comparison)
+│
+├── templates/             # HTML templates (used by securetask.py)
+│   ├── login.html
+│   ├── register.html
+│   ├── dashboard.html
+│   └── admin.html
+│
+├── instance/
+│   └── database.db        # SQLite database (auto-created on first run)
+│
+└── README.md
+```
+
+---
+
+## 3. Installation & Setup
+
+### Prerequisites
+
+- Python 3.8 or higher
+- pip
+
+### Install dependencies
+
+```bash
+pip install flask flask-sqlalchemy flask-login flask-wtf flask-limiter werkzeug
+```
+
+Or if a `requirements.txt` is present:
+
+```bash
+pip install -r requirements.txt
+```
+
+### Environment variable (recommended for secure app)
+
+The secure app reads the secret key from an environment variable. Set it before running:
+
+```bash
+# macOS / Linux
+export SECRET_KEY="your-long-random-secret-key-here"
+
+# Windows Command Prompt
+set SECRET_KEY=your-long-random-secret-key-here
+
+# Windows PowerShell
+$env:SECRET_KEY="your-long-random-secret-key-here"
+```
+
+If not set, it falls back to a default development key. **Always set this in production.**
+
+---
+
+## 4. Running the Apps
+
+### Run the Secure App (port 5000)
+
+```bash
+python securetask.py
+```
+
+Visit: `http://127.0.0.1:5000`
+
+### Run the Vulnerable App (port 5001)
+
+```bash
+python vulnerableapp.py
+```
+
+Visit: `http://127.0.0.1:5001`
+
+Both can run at the same time in separate terminals for live comparison.
+
+---
+
+## 5. Default Credentials
+
+Both apps seed a default admin account on first run.
+
+| App | Username | Password |
+|---|---|---|
+| Secure (`securetask.py`) | `admin` | `Admin@1234` |
+| Vulnerable (`vulnerableapp.py`) | `admin` | `admin123` |
+
+---
+
+## 6. Secure App — Features & How They Work
+
+### 6.1 Password Hashing
+
+Passwords are never stored in plain text. When a user registers, `werkzeug.security.generate_password_hash()` applies a **PBKDF2-SHA256** hash with a random salt before saving to the database. On login, `check_password_hash()` compares the submitted password against the stored hash.
+
+```python
+hashed_pw = generate_password_hash(password)
+check_password_hash(user.password, password)
+```
+
+Even if the database is stolen, attackers cannot recover the original passwords.
+
+---
+
+### 6.2 SQL Injection Prevention
+
+All database queries are made through **SQLAlchemy ORM**, which uses parameterised queries internally. User input is never concatenated into a SQL string.
+
+```python
+# Safe — SQLAlchemy builds a parameterised query
+User.query.filter_by(username=username).first()
+Task.query.filter_by(user_id=current_user.id).all()
+```
+
+This completely prevents SQL injection attacks such as `' OR '1'='1` login bypass or `'); DROP TABLE tasks; --` table destruction.
+
+---
+
+### 6.3 CSRF Protection
+
+Every HTML form includes a hidden CSRF token generated by **Flask-WTF**. The server validates this token on every POST request. If the token is missing or doesn't match, the request is rejected with a 400 Bad Request error.
+
+```html
+<input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+```
+
+```python
+csrf = CSRFProtect(app)
+```
+
+This prevents malicious third-party websites from submitting forms on behalf of a logged-in user.
+
+---
+
+### 6.4 Rate Limiting (Brute Force Protection)
+
+**Flask-Limiter** restricts the login route to a maximum of **5 attempts per minute** per IP address. Exceeding this limit returns a 429 Too Many Requests response, making automated password guessing attacks impractical.
+
+```python
+@app.route('/login', methods=['GET', 'POST'])
+@limiter.limit("5 per minute")
+def login():
+    ...
+```
+
+---
+
+### 6.5 Session Timeout
+
+Sessions are configured to expire after **15 minutes of inactivity**. This limits the window of exposure if a user leaves their browser open on a shared computer.
+
+```python
+app.config['PERMANENT_SESSION_LIFETIME'] = timedelta(minutes=15)
+session.permanent = True
+```
+
+---
+
+### 6.6 Stable, Environment-Driven Secret Key
+
+The Flask secret key is read from an environment variable rather than being hardcoded or randomly regenerated on each startup. A stable key ensures session cookies and CSRF tokens remain valid across restarts; an environment variable keeps it out of source code.
+
+```python
+app.secret_key = os.environ.get('SECRET_KEY', 'dev-secret-key-change-in-production')
+```
+
+---
+
+### 6.7 Role-Based Access Control
+
+The admin panel is protected by two layers: the `@login_required` decorator (enforced by Flask-Login, which validates the session against the database) and an explicit role check inside the route.
+
+```python
+@app.route('/admin')
+@login_required
+def admin():
+    if current_user.role != 'admin':
+        flash('Admins only!', 'danger')
+        return redirect(url_for('dashboard'))
+```
+
+Task deletion also checks ownership — a regular user cannot delete another user's task even by crafting a URL directly.
+
+```python
+if task.user_id != current_user.id and current_user.role != 'admin':
+    flash('Unauthorised!', 'danger')
+```
+
+---
+
+### 6.8 Input Validation
+
+Registration enforces minimum length rules before any data reaches the database:
+
+```python
+if len(username) < 3 or len(password) < 8:
+    flash('Username min 3 chars, password min 8 chars.', 'danger')
+```
+
+---
+
+### 6.9 Generic Error Messages
+
+Login failures return a single generic message regardless of whether the username exists or the password was wrong. This prevents **username enumeration** — an attacker cannot tell which part of their guess was incorrect.
+
+```python
+flash('Invalid username or password.', 'danger')
+```
+
+---
+
+### 6.10 Debug Mode Disabled
+
+The app runs with `debug=False`, which prevents Flask from displaying full stack traces and an interactive debugger to users in the event of an error.
+
+```python
+app.run(debug=False)
+```
+
+---
+
+## 7. Vulnerable App — Intentional Flaws
+
+`vulnerableapp.py` runs on port 5001 and contains the following intentional vulnerabilities for demonstration purposes.
+
+---
+
+### Vulnerability 1 — Plain Text Password Storage
+
+Passwords are inserted directly into the database with no hashing.
+
+```python
+# Stores "admin123" as-is in the database
+c.execute("INSERT INTO users ... VALUES ('admin', 'admin123', 'admin')")
+```
+
+**Impact:** A single database breach exposes every user's password immediately. The admin panel even displays all passwords on screen.
+
+**Fix in securetask.py:** `generate_password_hash()` / `check_password_hash()`
+
+---
+
+### Vulnerability 2 — SQL Injection on Login
+
+The login query is built by string concatenation.
+
+```python
+query = "SELECT * FROM users WHERE username = '" + username + "' AND password = '" + password + "'"
+```
+
+**Demo:** Enter `' OR '1'='1` as the username with any password to bypass authentication entirely and log in as the first user in the database.
+
+**Fix in securetask.py:** SQLAlchemy ORM with parameterised queries.
+
+---
+
+### Vulnerability 3 — SQL Injection on Registration & Tasks
+
+The same string concatenation pattern is used when registering users and adding tasks.
+
+```python
+query = "INSERT INTO tasks ... VALUES ('" + title + "', '" + description + "', ...)"
+```
+
+**Demo:** Enter `'); DROP TABLE tasks; --` as a task title to destroy the tasks table.
+
+**Fix in securetask.py:** SQLAlchemy ORM.
+
+---
+
+### Vulnerability 4 — No CSRF Protection
+
+Forms contain no CSRF token. Any website can host a hidden form that submits to `http://127.0.0.1:5001/add-task` and the server will accept it while the victim is logged in.
+
+**Fix in securetask.py:** `CSRFProtect(app)` + `{{ csrf_token() }}` in every form.
+
+---
+
+### Vulnerability 5 — Hardcoded Weak Secret Key
+
+```python
+app.secret_key = "password123"
+```
+
+**Impact:** Flask signs session cookies using this key. Anyone who knows it can forge a session cookie with `role: admin` and gain admin access without credentials.
+
+**Fix in securetask.py:** `os.environ.get('SECRET_KEY', ...)` with a strong random value.
+
+---
+
+### Vulnerability 6 — No Rate Limiting
+
+The login and register routes have no request limits. An attacker can make thousands of login attempts per second to brute-force passwords, or flood registration to fill the database.
+
+**Fix in securetask.py:** `@limiter.limit("5 per minute")` on the login route.
+
+---
+
+### Vulnerability 7 — No Session Timeout
+
+Sessions persist indefinitely. If a user logs in on a shared or public computer and walks away, their session remains active until they explicitly log out.
+
+**Fix in securetask.py:** `PERMANENT_SESSION_LIFETIME = timedelta(minutes=15)`
+
+---
+
+### Vulnerability 8 — Broken Access Control
+
+Task deletion has no ownership check:
+
+```python
+# Any logged-in user can delete any task by visiting /delete-task/<id>
+c.execute("DELETE FROM tasks WHERE id = " + task_id)
+```
+
+The admin check only reads the session cookie value — it is never verified against the database, so a forged cookie grants admin access.
+
+**Fix in securetask.py:** Ownership check on delete + `@login_required` (validates session against DB) + explicit role check.
+
+---
+
+### Vulnerability 9 — Verbose Error Messages & Information Disclosure
+
+Raw database exceptions are returned directly to the user:
+
+```python
+error = "Database error: " + str(e)
+```
+
+Login also reveals whether the username or password was wrong:
+
+```python
+error = "Login failed - username or password not found in database"
+```
+
+**Impact:** Stack traces leak database schema, file paths, and library versions. Specific login errors allow username enumeration.
+
+**Fix in securetask.py:** Generic `"Invalid username or password."` message; no exception details exposed.
+
+---
+
+### Vulnerability 10 — No Input Validation
+
+Any value is accepted during registration — blank usernames, single-character passwords, arbitrarily long strings.
+
+**Fix in securetask.py:** Minimum length checks before any DB interaction.
+
+---
+
+## 8. Security Comparison Table
+
+| Security Control | `securetask.py` | `vulnerableapp.py` |
+|---|---|---|
+| Password storage | Hashed (PBKDF2-SHA256 + salt) | Plain text |
+| SQL queries | SQLAlchemy ORM (parameterised) | String concatenation (injectable) |
+| CSRF protection | Flask-WTF `CSRFProtect` | None |
+| Brute force protection | Rate limited (5 req/min) | Unlimited |
+| Session timeout | 15 minutes | Never expires |
+| Secret key | Environment variable | Hardcoded `"password123"` |
+| Access control | `@login_required` + ownership check | Session value only (forgeable) |
+| Error messages | Generic, no detail | Raw DB errors + username enumeration |
+| Input validation | Min length enforced | None |
+| Debug mode | `False` | `True` (stack traces exposed) |
+
+---
+
+## 9. Pages & Routes
+
+| Route | Method | Description |
+|---|---|---|
+| `/` | GET | Redirects to `/login` |
+| `/login` | GET, POST | User login form |
+| `/register` | GET, POST | New user registration |
+| `/dashboard` | GET | Personal task list (login required) |
+| `/add-task` | POST | Create a new task (login required) |
+| `/delete-task/<id>` | GET | Delete a task (owner or admin only) |
+| `/admin` | GET | Admin panel — all users and tasks (admin only) |
+| `/logout` | GET | Clear session and redirect to login |
+
+---
+
+## 10. Technologies Used
+
+| Technology | Purpose |
+|---|---|
+| Python 3 | Core language |
+| Flask | Web framework |
+| Flask-SQLAlchemy | ORM and database abstraction |
+| Flask-Login | Session management and `@login_required` |
+| Flask-WTF | CSRF protection |
+| Flask-Limiter | Rate limiting |
+| Werkzeug | Password hashing (PBKDF2-SHA256) |
+| SQLite | Lightweight embedded database |
+| Jinja2 | HTML templating (built into Flask) |
+
+---
+
+<div align="center">
+  <p>National College of Ireland &nbsp;·&nbsp; Secure Web Development &nbsp;·&nbsp; CA2</p>
+</div>
