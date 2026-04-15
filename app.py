@@ -8,20 +8,22 @@ from werkzeug.security import generate_password_hash, check_password_hash
 from datetime import timedelta
 import os
 
+# ---------- App Setup ----------
 app = Flask(__name__)
-app.secret_key = os.urandom(24)         
+app.secret_key = os.urandom(24)          # Random secret key each time
 app.config['SQLALCHEMY_DATABASE_URI'] = 'sqlite:///database.db'
 app.config['PERMANENT_SESSION_LIFETIME'] = timedelta(minutes=15)  # Auto logout after 15 mins
 
 # ---------- Security Tools ----------
 db = SQLAlchemy(app)
-csrf = CSRFProtect(app)                 
+csrf = CSRFProtect(app)                  # Protects against CSRF attacks
 login_manager = LoginManager(app)
 login_manager.login_view = 'login'
 
-
+# Rate limiter: max 5 login attempts per minute
 limiter = Limiter(get_remote_address, app=app, default_limits=["200 per day"])
 
+# ---------- Database Models (like Excel sheet columns) ----------
 class User(UserMixin, db.Model):
     id = db.Column(db.Integer, primary_key=True)
     username = db.Column(db.String(50), unique=True, nullable=False)
@@ -39,11 +41,14 @@ class Task(db.Model):
 def load_user(user_id):
     return User.query.get(int(user_id))
 
+# ---------- Routes (pages) ----------
 
+# Home → goes to login
 @app.route('/')
 def home():
     return redirect(url_for('login'))
 
+# Register page
 @app.route('/register', methods=['GET', 'POST'])
 def register():
     if request.method == 'POST':
