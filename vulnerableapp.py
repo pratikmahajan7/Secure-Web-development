@@ -233,7 +233,6 @@ def delete_task(task_id):
 @app.route('/admin')
 def admin():
     # VULNERABILITY 8: Only checks session value - not verified against database
-    # Weak secret key means session cookie can be forged
     if session.get('role') != 'admin':
         return redirect('/dashboard')
     conn = sqlite3.connect(DB)

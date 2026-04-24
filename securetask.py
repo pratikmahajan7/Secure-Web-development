@@ -8,22 +8,18 @@ from werkzeug.security import generate_password_hash, check_password_hash
 from datetime import timedelta
 import os
 
-# ---------- App Setup ----------
 app = Flask(__name__)
 app.secret_key = os.environ.get('SECRET_KEY', 'dev-secret-key-change-in-production')
 app.config['SQLALCHEMY_DATABASE_URI'] = 'sqlite:///database.db'
 app.config['PERMANENT_SESSION_LIFETIME'] = timedelta(minutes=15)  # Auto logout after 15 mins
 
-# ---------- Security Tools ----------
 db = SQLAlchemy(app)
 csrf = CSRFProtect(app)                  # Protects against CSRF attacks
 login_manager = LoginManager(app)
 login_manager.login_view = 'login'
 
-# Rate limiter: max 5 login attempts per minute
 limiter = Limiter(get_remote_address, app=app, default_limits=["200 per day"])
 
-# ---------- Database Models (like Excel sheet columns) ----------
 class User(UserMixin, db.Model):
     id = db.Column(db.Integer, primary_key=True)
     username = db.Column(db.String(50), unique=True, nullable=False)
@@ -41,14 +37,10 @@ class Task(db.Model):
 def load_user(user_id):
     return User.query.get(int(user_id))
 
-# ---------- Routes (pages) ----------
-
-# Home → goes to login
 @app.route('/')
 def home():
     return redirect(url_for('login'))
 
-# Register page
 @app.route('/register', methods=['GET', 'POST'])
 def register():
     if request.method == 'POST':
@@ -65,7 +57,6 @@ def register():
             flash('Username already taken.', 'danger')
             return redirect(url_for('register'))
 
-        # Hash the password before saving
         hashed_pw = generate_password_hash(password)
         new_user = User(username=username, password=hashed_pw, role='user')
         db.session.add(new_user)
@@ -93,14 +84,13 @@ def login():
 
     return render_template('login.html')
 
-# Dashboard (normal users see their tasks)
+# Dashboard 
 @app.route('/dashboard')
 @login_required
 def dashboard():
     tasks = Task.query.filter_by(user_id=current_user.id).all()
     return render_template('dashboard.html', tasks=tasks)
 
-# Add a task
 @app.route('/add-task', methods=['POST'])
 @login_required
 def add_task():
@@ -113,7 +103,6 @@ def add_task():
         flash('Task added!', 'success')
     return redirect(url_for('dashboard'))
 
-# Delete a task
 @app.route('/delete-task/<int:task_id>')
 @login_required
 def delete_task(task_id):
@@ -127,7 +116,7 @@ def delete_task(task_id):
     flash('Task deleted.', 'success')
     return redirect(url_for('dashboard'))
 
-# Admin page (only admins can see this)
+# Admin page 
 @app.route('/admin')
 @login_required
 def admin():
@@ -145,7 +134,6 @@ def logout():
     logout_user()
     return redirect(url_for('login'))
 
-# ---------- Create DB and default admin on first run ----------
 with app.app_context():
     db.create_all()
     if not User.query.filter_by(username='admin').first():
